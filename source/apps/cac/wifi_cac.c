@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include "stdlib.h"
+#include <string.h>
 #include <sys/time.h>
 #include "wifi_hal.h"
 #include "wifi_ctrl.h"
@@ -30,7 +31,10 @@
 #include "wifi_cac.h"
 #include "wifi_hal_rdk_framework.h"
 #include "wifi_monitor.h"
-#include <rbus/rbus.h>
+#include <rbus.h>
+#include "scheduler.h"
+#include <unistd.h>
+#include <time.h>
 
 void cac_print(char *format, ...)
 {
@@ -52,6 +56,27 @@ void cac_print(char *format, ...)
     fputs(buff, fpg);
     fflush(fpg);
     fclose(fpg);
+}
+
+void tcm_print(char *format, ...) {
+  char buff[256] = {0};
+  va_list list;
+  FILE *fpg = NULL;
+
+  get_formatted_time(buff);
+  strncat(buff, " ", strlen(buff));
+
+  va_start(list, format);
+  vsprintf(&buff[strlen(buff)], format, list);
+  va_end(list);
+
+  fpg = fopen("/rdklogs/logs/wifiTransientClientMgmtCtrl.txt", "a+");
+  if (fpg == NULL) {
+    return;
+  }
+  fputs(buff, fpg);
+  fflush(fpg);
+  fclose(fpg);
 }
 
 void telemetry_event_cac(char *deny_type,int index, char *deny_reason,char *mac,int threshold ,int value)
@@ -84,6 +109,55 @@ void telemetry_event_cac(char *deny_type,int index, char *deny_reason,char *mac,
 
     wifi_util_info_print(WIFI_APPS, "%s:%d telemetry_buff=%s and telemetry_val=%s\n", __func__, __LINE__,telemetry_buff,telemetry_val);
     get_stubs_descriptor()->t2_event_s_fn(telemetry_buff, telemetry_val);
+}
+
+void telemetry_event_tcm(int index, char *mac, double threshold, double value,
+                         char *exp_weight, int timeout, int current_mgmt_frames,
+                         int min_num_mgmt_frames, char *reason) {
+  char telemetry_buff[64] = {0};
+  char telemetry_val[128] = {0};
+  char telemetry_buff_grep[13] = {0};
+
+  if (!mac) {
+    return;
+  }
+
+  memset(telemetry_buff, 0, sizeof(telemetry_buff));
+  memset(telemetry_val, 0, sizeof(telemetry_val));
+  memset(telemetry_buff_grep, 0, sizeof(telemetry_buff_grep));
+
+  if (isVapHotspotSecure5g(index)) {
+    snprintf(telemetry_buff, sizeof(telemetry_buff), "XWIFI_5G_tcm_accum");
+    snprintf(telemetry_val, sizeof(telemetry_val),
+             "%d,%lf,%lf,%s,%d,%d,%d,%s,%s", index, threshold, value,
+             exp_weight, timeout, current_mgmt_frames, min_num_mgmt_frames, mac,
+             reason);
+  } else if (isVapHotspotOpen5g(index)) {
+    snprintf(telemetry_buff, sizeof(telemetry_buff), "XWIFI_5G_tcm_accum");
+    snprintf(telemetry_val, sizeof(telemetry_val),
+             "%d,%lf,%lf,%s,%d,%d,%d,%s,%s", index, threshold, value,
+             exp_weight, timeout, current_mgmt_frames, min_num_mgmt_frames, mac,
+             reason);
+  } else if (isVapHotspotSecure6g(index)) {
+    snprintf(telemetry_buff, sizeof(telemetry_buff), "XWIFI_6G_tcm_accum");
+    snprintf(telemetry_val, sizeof(telemetry_val),
+             "%d,%lf,%lf,%s,%d,%d,%d,%s,%s", index, threshold, value,
+             exp_weight, timeout, current_mgmt_frames, min_num_mgmt_frames, mac,
+             reason);
+  } else if (isVapHotspotOpen6g(index)) {
+    snprintf(telemetry_buff, sizeof(telemetry_buff), "XWIFI_6G_tcm_accum");
+    snprintf(telemetry_val, sizeof(telemetry_val),
+             "%d,%lf,%lf,%s,%d,%d,%d,%s,%s", index, threshold, value,
+             exp_weight, timeout, current_mgmt_frames, min_num_mgmt_frames, mac,
+             reason);
+  } else {
+    return;
+  }
+
+  strncpy(telemetry_buff_grep, telemetry_buff, sizeof(telemetry_buff_grep) - 1);
+  telemetry_buff_grep[sizeof(telemetry_buff_grep) - 1] = '\0';
+  tcm_print("%s:%s\n", telemetry_buff_grep, telemetry_val);
+  get_stubs_descriptor()->t2_event_s_fn(telemetry_buff, telemetry_val);
 }
 
 int cac_event_exec_start(wifi_app_t *apps, void *arg)
@@ -249,6 +323,97 @@ wifi_params_mcsindex_rate_t mcsindex_rate_tbl[] = {
   {"ax",    "160",  1,  6,  649},
   {"ax",    "160",  1,  7,  721},
 
+#ifdef CONFIG_IEEE80211BE
+  {"be", "20", 1, 0,   8},
+  {"be", "20", 1, 1,  16},
+  {"be", "20", 1, 2,  24},
+  {"be", "20", 1, 3,  32},
+  {"be", "20", 1, 4,  48},
+  {"be", "20", 1, 5,  64},
+  {"be", "20", 1, 6,  72},
+  {"be", "20", 1, 7,  80},   
+
+  {"be", "20", -1, 0,   7},
+  {"be", "20", -1, 1,  14},
+  {"be", "20", -1, 2,  21},
+  {"be", "20", -1, 3,  28},
+  {"be", "20", -1, 4,  42},
+  {"be", "20", -1, 5,  56},
+  {"be", "20", -1, 6,  63},
+  {"be", "20", -1, 7,  70},
+  
+  {"be", "40", 1, 0,  17},
+  {"be", "40", 1, 1,  34},
+  {"be", "40", 1, 2,  51},
+  {"be", "40", 1, 3,  68},
+  {"be", "40", 1, 4, 102},
+  {"be", "40", 1, 5, 136},
+  {"be", "40", 1, 6, 153},
+  {"be", "40", 1, 7, 170},
+
+  {"be", "40", -1, 0,  15},
+  {"be", "40", -1, 1,  30},
+  {"be", "40", -1, 2,  45},
+  {"be", "40", -1, 3,  60},
+  {"be", "40", -1, 4,  90},
+  {"be", "40", -1, 5, 120},
+  {"be", "40", -1, 6, 135},
+  {"be", "40", -1, 7, 150},
+
+  {"be", "80", 1, 0,  36},
+  {"be", "80", 1, 1,  72},
+  {"be", "80", 1, 2, 108},
+  {"be", "80", 1, 3, 144},
+  {"be", "80", 1, 4, 216},
+  {"be", "80", 1, 5, 288},
+  {"be", "80", 1, 6, 324},
+  {"be", "80", 1, 7, 360},
+
+  {"be", "80", -1, 0,  32},
+  {"be", "80", -1, 1,  65},
+  {"be", "80", -1, 2,  98},
+  {"be", "80", -1, 3, 130},
+  {"be", "80", -1, 4, 195},
+  {"be", "80", -1, 5, 260},
+  {"be", "80", -1, 6, 293},
+  {"be", "80", -1, 7, 325},
+
+  {"be", "160", 1, 0,   72},
+  {"be", "160", 1, 1,  144},
+  {"be", "160", 1, 2,  216},
+  {"be", "160", 1, 3,  288},
+  {"be", "160", 1, 4,  432},
+  {"be", "160", 1, 5,  576},
+  {"be", "160", 1, 6,  648},
+  {"be", "160", 1, 7,  720},
+
+  {"be", "160", -1, 0,   65},
+  {"be", "160", -1, 1,  130},
+  {"be", "160", -1, 2,  195},
+  {"be", "160", -1, 3,  260},
+  {"be", "160", -1, 4,  390},
+  {"be", "160", -1, 5,  520},
+  {"be", "160", -1, 6,  585},
+  {"be", "160", -1, 7,  650},
+
+  {"be", "320", 1, 0,  144},
+  {"be", "320", 1, 1,  288},
+  {"be", "320", 1, 2,  432},
+  {"be", "320", 1, 3,  576},
+  {"be", "320", 1, 4,  864},
+  {"be", "320", 1, 5, 1152},
+  {"be", "320", 1, 6, 1296},
+  {"be", "320", 1, 7, 1440},
+
+  {"be", "320", -1, 0,  130},
+  {"be", "320", -1, 1,  260},
+  {"be", "320", -1, 2,  390},
+  {"be", "320", -1, 3,  520},
+  {"be", "320", -1, 4,  780},
+  {"be", "320", -1, 5, 1040},
+  {"be", "320", -1, 6, 1170},
+  {"be", "320", -1, 7, 1300},
+#endif /* CONFIG_IEEE80211BE */
 };
 
 int get_minrate_from_mcs( char *cli_OperatingStandard, char *cli_OperatingChannelBandwidth, int mcs)
@@ -267,12 +432,28 @@ int get_minrate_from_mcs( char *cli_OperatingStandard, char *cli_OperatingChanne
     return 0;
 }
 
+unsigned long long getCurrentTimeInMilliSeconds() {
+  struct timespec timer_usec;
+  long long int timestamp_msec;
+
+  if (!clock_gettime(CLOCK_MONOTONIC, &timer_usec)) {
+    timestamp_msec = ((long long int)timer_usec.tv_sec) * 1000ll +
+                     (long long int)(timer_usec.tv_nsec / 1000000);
+  } else {
+    timestamp_msec = -1;
+  }
+  return timestamp_msec;
+}
+
 int cac_event_exec_timeout(wifi_app_t *apps, void *arg)
 {
     hash_map_t *assoc_map = apps->data.u.cac.assoc_req_map;
     hash_map_t *sta_map = apps->data.u.cac.sta_map;
+    hash_map_t *tcm_req_map = apps->data.u.cac.tcm_req_map;
     cac_sta_info_t *elem;
     cac_sta_info_t *tmp_elem;
+    tcm_sta_info_t *tcm_sta;
+    tcm_sta_info_t *tcm_tmp_elem;
     cac_associated_devices_t *client;
     wifi_postassoc_control_t wifidb_postassoc_conf = { 0 };
     wifi_preassoc_control_t wifidb_preassoc_conf = { 0 };
@@ -300,7 +481,6 @@ int cac_event_exec_timeout(wifi_app_t *apps, void *arg)
 
         while (elem != NULL) {
             elem->seconds_alive--;
-
             if(elem->seconds_alive == 0) {
                 memset(mac_str, 0, sizeof(mac_str));
                 strncpy(mac_str, elem->mac_addr, sizeof(mac_str));
@@ -312,6 +492,27 @@ int cac_event_exec_timeout(wifi_app_t *apps, void *arg)
                 }
             } else {
                 elem = hash_map_get_next(assoc_map, elem);
+            }
+        }
+    }
+
+    if (tcm_req_map != NULL) {
+        tcm_sta = hash_map_get_first(tcm_req_map);
+        while (tcm_sta != NULL) {
+            tcm_sta->seconds_alive--;
+            if(tcm_sta->seconds_alive == 0) {
+                memset(mac_str, 0, sizeof(mac_str));
+                snprintf(mac_str, sizeof(mac_str), "%s", tcm_sta->mac_addr);
+                tcm_sta = hash_map_get_next(tcm_req_map, tcm_sta);
+                tcm_tmp_elem = hash_map_remove(tcm_req_map, mac_str);
+                //Optimizations to be done for clearing frame entries
+                if (tcm_tmp_elem != NULL) {
+                    if(tcm_tmp_elem->frame_info != NULL)
+                        queue_destroy(tcm_tmp_elem->frame_info);
+                    free(tcm_tmp_elem);
+                }
+            } else {
+                tcm_sta = hash_map_get_next(tcm_req_map, tcm_sta);
             }
         }
     }
@@ -378,65 +579,39 @@ int cac_event_exec_timeout(wifi_app_t *apps, void *arg)
 
             client->sampling_interval--;
 
-            get_radio_data(radio_index, &chan_stats);
-
             if (client->sampling_interval == 0 && client->sampling_count != 0) {
-                for (itr = 0; itr < getNumberRadios(); itr++) {
-                    for (itrj = 0; itrj < getMaxNumberVAPsPerRadio(itr); itrj++) {
-                        if (mgr->radio_config[itr]
-                                .vaps.rdk_vap_array[itrj]
-                                .associated_devices_lock == NULL) {
-                            continue;
+              for (itr = 0; itr < getNumberRadios(); itr++) {
+                for (itrj = 0; itrj < getMaxNumberVAPsPerRadio(itr); itrj++) {
+                  if (mgr->radio_config[itr].vaps.rdk_vap_array[itrj].associated_devices_lock == NULL) {
+                        continue;
+                  }
+                  pthread_mutex_lock(mgr->radio_config[itr].vaps.rdk_vap_array[itrj].associated_devices_lock);
+                  if (mgr->radio_config[itr].vaps.rdk_vap_array[itrj].associated_devices_map != NULL && !found) {
+                    assoc_dev_data = hash_map_get_first(mgr->radio_config[itr].vaps.rdk_vap_array[itrj].associated_devices_map);
+                    while (assoc_dev_data != NULL) {
+                        get_sta_stats_info(assoc_dev_data);
+                        if (((unsigned int)assoc_dev_data->ap_index == client->ap_index) &&
+                            (memcmp(client->sta_mac, assoc_dev_data->dev_stats.cli_MACAddress, sizeof(mac_address_t)) == 0)) {
+                            found = true;
+                            break;
                         }
-                        pthread_mutex_lock(mgr->radio_config[itr]
-                                .vaps.rdk_vap_array[itrj]
-                                .associated_devices_lock);
-                        if (mgr->radio_config[itr]
-                                    .vaps.rdk_vap_array[itrj]
-                                    .associated_devices_map != NULL &&
-                            !found) {
-                            assoc_dev_data = hash_map_get_first(mgr->radio_config[itr]
-                                    .vaps.rdk_vap_array[itrj]
-                                    .associated_devices_map);
-                            while (assoc_dev_data != NULL) {
-                                get_sta_stats_info(assoc_dev_data);
-                                if (((unsigned int)assoc_dev_data->ap_index == client->ap_index) &&
-                                    (memcmp(client->sta_mac,
-                                         assoc_dev_data->dev_stats.cli_MACAddress,
-                                         sizeof(mac_address_t)) == 0)) {
-                                    found = true;
-
-                                    if (assoc_dev_data != NULL) {
-                                        client->rssi_avg = EXP_WEIGHT * client->rssi_avg +
-                                            (1 - EXP_WEIGHT) * assoc_dev_data->dev_stats.cli_RSSI;
-                                        client->snr_avg = EXP_WEIGHT * client->snr_avg +
-                                            (1 - EXP_WEIGHT) *
-                                                (assoc_dev_data->dev_stats.cli_RSSI -
-                                                    chan_stats.radio_NoiseFloor);
-                                        client->uplink_rate_avg = EXP_WEIGHT *
-                                                client->uplink_rate_avg +
-                                            (1 - EXP_WEIGHT) *
-                                                assoc_dev_data->dev_stats.cli_LastDataUplinkRate;
-                                        min_rate = get_minrate_from_mcs(
-                                            assoc_dev_data->dev_stats.cli_OperatingStandard,
-                                            assoc_dev_data->dev_stats.cli_OperatingChannelBandwidth,
-                                            mcs_conf);
-                                    }
-                                    break;
-                                }
-                                assoc_dev_data = hash_map_get_next(mgr->radio_config[itr]
-                                                                       .vaps.rdk_vap_array[itrj]
-                                                                       .associated_devices_map,
-                                    assoc_dev_data);
-                            }
-                        }
-                        pthread_mutex_unlock(mgr->radio_config[itr]
-                                .vaps.rdk_vap_array[itrj]
-                                .associated_devices_lock);
+                        assoc_dev_data = hash_map_get_next(mgr->radio_config[itr].vaps.rdk_vap_array[itrj].associated_devices_map,
+                                            assoc_dev_data);
+                       }
+                    }
+                    pthread_mutex_unlock(mgr->radio_config[itr].vaps.rdk_vap_array[itrj].associated_devices_lock);
                     }
                 }
 
                 found = false;
+
+                get_radio_data(radio_index, &chan_stats);
+                if (assoc_dev_data != NULL) {
+                    client->rssi_avg = EXP_WEIGHT * client->rssi_avg + (1 - EXP_WEIGHT) * assoc_dev_data->dev_stats.cli_RSSI;
+                    client->snr_avg = EXP_WEIGHT * client->snr_avg + (1 - EXP_WEIGHT) * (assoc_dev_data->dev_stats.cli_RSSI - chan_stats.radio_NoiseFloor);
+                    client->uplink_rate_avg = EXP_WEIGHT * client->uplink_rate_avg + (1 - EXP_WEIGHT) * assoc_dev_data->dev_stats.cli_LastDataUplinkRate;
+                    min_rate = get_minrate_from_mcs(assoc_dev_data->dev_stats.cli_OperatingStandard, assoc_dev_data->dev_stats.cli_OperatingChannelBandwidth, mcs_conf);
+                }
 
                 client->sampling_count--;
 
@@ -500,7 +675,6 @@ int cac_event_exec_timeout(wifi_app_t *apps, void *arg)
                 }
                 client->sampling_interval = atoi(wifidb_postassoc_conf.sampling_interval);
             }
-
             client = hash_map_get_next(sta_map, client);
         }
     }
@@ -511,23 +685,310 @@ int cac_event_exec_timeout(wifi_app_t *apps, void *arg)
 int exec_event_cac(wifi_app_t *apps, wifi_event_subtype_t sub_type, void *arg)
 {
     switch (sub_type) {
-    case wifi_event_exec_start:
-        cac_event_exec_start(apps, arg);
-        break;
+        case wifi_event_exec_start:
+            cac_event_exec_start(apps, arg);
+            break;
 
-    case wifi_event_exec_stop:
-        cac_event_exec_stop(apps, arg);
-        break;
+        case wifi_event_exec_stop:
+            cac_event_exec_stop(apps, arg);
+            break;
 
-    case wifi_event_exec_timeout:
-        cac_event_exec_timeout(apps, arg);
-        break;
-    default:
-        wifi_util_error_print(WIFI_APPS, "%s:%d: event not handle %s\r\n", __func__, __LINE__,
-            wifi_event_subtype_to_string(sub_type));
-        break;
+        case wifi_event_exec_timeout:
+            cac_event_exec_timeout(apps, arg);
+            break;
+        default:
+            wifi_util_error_print(WIFI_APPS,"%s:%d: event not handle[%d]\r\n",__func__, __LINE__, sub_type);
+            break;
     }
     return RETURN_OK;
+}
+
+int map_wifi_frame_to_wlan(wifi_mgmtFrameType_t frameType) {
+  switch (frameType) {
+  case WIFI_MGMT_FRAME_TYPE_ASSOC_REQ:
+    return WLAN_FC_STYPE_ASSOC_REQ;
+  case WIFI_MGMT_FRAME_TYPE_ASSOC_RSP:
+    return WLAN_FC_STYPE_ASSOC_RESP;
+  case WIFI_MGMT_FRAME_TYPE_REASSOC_REQ:
+    return WLAN_FC_STYPE_REASSOC_REQ;
+  case WIFI_MGMT_FRAME_TYPE_REASSOC_RSP:
+    return WLAN_FC_STYPE_REASSOC_RESP;
+  case WIFI_MGMT_FRAME_TYPE_PROBE_REQ:
+    return WLAN_FC_STYPE_PROBE_REQ;
+  case WIFI_MGMT_FRAME_TYPE_PROBE_RSP:
+    return WLAN_FC_STYPE_PROBE_RESP;
+  case WIFI_MGMT_FRAME_TYPE_DISASSOC:
+    return WLAN_FC_STYPE_DISASSOC;
+  case WIFI_MGMT_FRAME_TYPE_AUTH:
+    return WLAN_FC_STYPE_AUTH;
+  case WIFI_MGMT_FRAME_TYPE_DEAUTH:
+    return WLAN_FC_STYPE_DEAUTH;
+  case WIFI_MGMT_FRAME_TYPE_ACTION:
+    return WLAN_FC_STYPE_ACTION;
+  default:
+    tcm_print("%s:%d Invalid frame type(%d) received\n", __func__, __LINE__,
+              frameType);
+    wifi_util_dbg_print(WIFI_TCM, "%s:%d Invalid frame type(%d) received\n",
+                        __func__, __LINE__, frameType);
+    return -1;
+  }
+}
+
+int TCM_algo(tcm_sta_info_t *tcm_sta) {
+  wifi_util_dbg_print(
+      WIFI_TCM,
+      "%s:%d STA %s Gradient threshold = %lf and SNR Gradient = %lf\n",
+      __func__, __LINE__, tcm_sta->mac_addr, tcm_sta->grad_threshold,
+      tcm_sta->snr_gradient);
+  if (fabs(tcm_sta->snr_gradient) <= tcm_sta->grad_threshold) {
+    return 1;
+  }
+  return 0;
+}
+
+int handle_deauth(tcm_sta_info_t *tcm_sta, frame_data_t *msg,
+                  mac_addr_str_t mac_str, hash_map_t *tcm_req_map) {
+  wifi_ctrl_t *ctrl = (wifi_ctrl_t *)get_wifictrl_obj();
+  int ret = -1;
+
+  if (ctrl == NULL) {
+    wifi_util_info_print(WIFI_APPS, "%s:%d ctrl is a NULL Pointer \n", __func__,
+                         __LINE__);
+    return ret;
+  }
+
+  if (!msg) {
+    wifi_util_info_print(WIFI_APPS, "%s:%d frame data is empty\n", __func__,
+                         __LINE__);
+    return ret;
+  }
+
+  wifi_preassoc_control_t *l_preassoc_ctrl_cfg =
+      Get_wifi_object_preassoc_ctrl_parameter(msg->frame.ap_index);
+
+  if (l_preassoc_ctrl_cfg == NULL) {
+    wifi_util_dbg_print(
+        WIFI_DB, "%s:%d: invalid Get_wifi_object_preassoc_ctrl_parameter \n",
+        __func__, __LINE__);
+    return -1;
+  }
+  wifi_util_dbg_print(WIFI_TCM,
+                      "%s:%d Get_wifi_object_preassoc_ctrl_paramete Time_ms=%d "
+                      " Min frames = %d  Exp Weight = %s "
+                      " Gradient Threshold = %s\n",
+                      __func__, __LINE__, l_preassoc_ctrl_cfg->time_ms,
+                      l_preassoc_ctrl_cfg->min_num_mgmt_frames,
+                      l_preassoc_ctrl_cfg->tcm_exp_weightage,
+                      l_preassoc_ctrl_cfg->tcm_gradient_threshold);
+  ret = TCM_algo(tcm_sta);
+  if (tcm_sta->num_frames >= l_preassoc_ctrl_cfg->min_num_mgmt_frames && !ret) {
+    mac_address_t bmac;
+    to_mac_bytes(tcm_sta->mac_addr, bmac);
+    wifi_hal_deauth(tcm_sta->ap_index,
+                    WLAN_STATUS_DENIED_POOR_CHANNEL_CONDITIONS, bmac);
+    tcm_notify_deny_association(
+        ctrl, (int)tcm_sta->ap_index, tcm_sta->mac_addr,
+        tcm_sta->grad_threshold, tcm_sta->snr_gradient,
+        l_preassoc_ctrl_cfg->tcm_exp_weightage, l_preassoc_ctrl_cfg->time_ms,
+        l_preassoc_ctrl_cfg->min_num_mgmt_frames, tcm_sta->num_frames,
+        WLAN_STATUS_DENIED_POOR_CHANNEL_CONDITIONS);
+    char str_reason[32] = {0};
+    snprintf(str_reason, sizeof(str_reason), "DENY,%d",
+             WLAN_STATUS_DENIED_POOR_CHANNEL_CONDITIONS);
+    telemetry_event_tcm(
+        tcm_sta->ap_index, tcm_sta->mac_addr, tcm_sta->grad_threshold,
+        tcm_sta->snr_gradient, l_preassoc_ctrl_cfg->tcm_exp_weightage,
+        l_preassoc_ctrl_cfg->time_ms, l_preassoc_ctrl_cfg->min_num_mgmt_frames,
+        tcm_sta->num_frames, str_reason);
+    tcm_print("%s:%d Denying STA %s\tAP Index=%u\tGradient Threshold = "
+              "%lf\tComputed Gradient = "
+              "%lf\tExponential Weightage = %s\tTimeout(ms) = %d\tConfigured "
+              "MGMT Frames = %d\tMGMT "
+              "Frames encountered=%d\n",
+              __func__, __LINE__, tcm_sta->mac_addr, tcm_sta->ap_index,
+              tcm_sta->grad_threshold, tcm_sta->snr_gradient,
+              l_preassoc_ctrl_cfg->tcm_exp_weightage,
+              l_preassoc_ctrl_cfg->time_ms,
+              l_preassoc_ctrl_cfg->min_num_mgmt_frames, tcm_sta->num_frames);
+  } else {
+    tcm_print("%s:%d Allowed STA %s\tAP Index=%u\tGradient Threshold = "
+              "%lf\tComputed Gradient = "
+              "%lf\tExponential Weightage = %s\tTimeout(ms) = %d\tConfigured "
+              "MGMT Frames = %d\tMGMT "
+              "Frames encountered=%d\n",
+              __func__, __LINE__, tcm_sta->mac_addr, tcm_sta->ap_index,
+              tcm_sta->grad_threshold, tcm_sta->snr_gradient,
+              l_preassoc_ctrl_cfg->tcm_exp_weightage,
+              l_preassoc_ctrl_cfg->time_ms,
+              l_preassoc_ctrl_cfg->min_num_mgmt_frames, tcm_sta->num_frames);
+    if (msg->frame.type == WIFI_MGMT_FRAME_TYPE_ASSOC_REQ ||
+        msg->frame.type == WIFI_MGMT_FRAME_TYPE_REASSOC_REQ) {
+      wifi_hal_send_mgmt_frame_response(
+          msg->frame.ap_index, map_wifi_frame_to_wlan(msg->frame.type),
+          CAC_STATUS_OK, WLAN_STATUS_SUCCESS, msg->data, msg->frame.sta_mac,
+          msg->frame.len, msg->frame.sig_dbm);
+    }
+    telemetry_event_tcm(
+        tcm_sta->ap_index, tcm_sta->mac_addr, tcm_sta->grad_threshold,
+        tcm_sta->snr_gradient, l_preassoc_ctrl_cfg->tcm_exp_weightage,
+        l_preassoc_ctrl_cfg->time_ms, l_preassoc_ctrl_cfg->min_num_mgmt_frames,
+        tcm_sta->num_frames, "ALLOW");
+    tcm_sta = hash_map_remove(tcm_req_map, mac_str);
+    if (tcm_sta != NULL) {
+      if (tcm_sta->frame_info != NULL)
+        queue_destroy(tcm_sta->frame_info);
+      free(tcm_sta);
+    }
+  }
+  return ret;
+}
+
+int send_resp_frame(void *arg) {
+  wifi_apps_mgr_t *apps_mgr;
+
+  wifi_ctrl_t *ctrl = (wifi_ctrl_t *)get_wifictrl_obj();
+  if (ctrl == NULL) {
+    wifi_util_info_print(WIFI_APPS, "%s:%d ctrl is a NULL Pointer \n", __func__,
+                         __LINE__);
+    return TIMER_TASK_ERROR;
+  }
+
+  apps_mgr = &ctrl->apps_mgr;
+  if (apps_mgr == NULL) {
+    wifi_util_info_print(WIFI_APPS, "%s:%d apps_mgr is a NULL Pointer \n",
+                         __func__, __LINE__);
+    return TIMER_TASK_ERROR;
+  }
+
+  wifi_app_t *app = get_app_by_inst(apps_mgr, wifi_app_inst_cac);
+  if (app == NULL) {
+    wifi_util_info_print(WIFI_APPS, "%s:%d NULL Pointer Unable to fetch CAC\n",
+                         __func__, __LINE__);
+    return TIMER_TASK_ERROR;
+  }
+
+  hash_map_t *tcm_req_map = app->data.u.cac.tcm_req_map;
+  tcm_sta_info_t *elem = (tcm_sta_info_t *)arg;
+
+  if (!elem) {
+    wifi_util_info_print(WIFI_APPS, "%s:%d Invalid arg passed onto function\n",
+                         __func__, __LINE__);
+    return TIMER_TASK_ERROR;
+  }
+
+  elem->allow_scheduler_id = 0;
+
+  frame_data_t *msg = &(elem->frame_data);
+  if (msg != NULL) {
+    if (handle_deauth(elem, msg, elem->mac_addr, tcm_req_map) == TCM_FAILURE) {
+      tcm_print("%s:%d handle_deauth failed \n", __func__,
+                            __LINE__);
+      return TIMER_TASK_ERROR;
+    }
+  } else {
+    tcm_print("%s:%d frame_data under tcm_sta_info_t has returned NULL\n",
+        __func__, __LINE__);
+    return TIMER_TASK_ERROR;
+  }
+  return TIMER_TASK_COMPLETE;
+}
+
+void update_tcm_sta_entry(tcm_sta_info_t **tcm_sta, mac_addr_str_t mac_str,
+                          unsigned long long current_time, int snr,
+                          frame_data_t *msg, double smoothening_factor,
+                          hash_map_t *tcm_req_map,
+                          double tcm_gradient_threshold) {
+  tcm_frame_data_t *tcm_frame_data =
+      (tcm_frame_data_t *)malloc(sizeof(tcm_frame_data_t));
+  if (tcm_frame_data == NULL) {
+    tcm_print("%s:%d Memory allocation failed for tcm_frame_data\n", __func__,
+              __LINE__);
+    return;
+  }
+  tcm_frame_data->frame_received_time = current_time;
+  if (*tcm_sta == NULL) {
+    wifi_util_dbg_print(WIFI_TCM, "%s:%d Adding new STA entry %s to TCM \n",
+                        __func__, __LINE__, mac_str);
+    *tcm_sta = (tcm_sta_info_t *)malloc(sizeof(tcm_sta_info_t));
+    if (*tcm_sta == NULL) {
+      tcm_print("%s:%d Memory allocation failed for tcm_sta %s\n", __func__,
+                __LINE__, mac_str);
+      free(tcm_frame_data);
+      return;
+    }
+    memset(*tcm_sta, 0, sizeof(tcm_sta_info_t));
+    snprintf((*tcm_sta)->mac_addr, sizeof((*tcm_sta)->mac_addr), "%s", mac_str);
+    (*tcm_sta)->ap_index = msg->frame.ap_index;
+    (*tcm_sta)->snr_gradient = 0;
+    (*tcm_sta)->frame_info = queue_create();
+    tcm_frame_data->EMA = 0;
+    (*tcm_sta)->num_frames = 1;
+    (*tcm_sta)->grad_threshold = tcm_gradient_threshold;
+    (*tcm_sta)->prev_snr = snr;
+    (*tcm_sta)->prev_frame_received_time = current_time;
+    (*tcm_sta)->frame_data = *msg;
+    (*tcm_sta)->allow_scheduler_id = 0;
+    (*tcm_sta)->seconds_alive = 5;
+    hash_map_put(tcm_req_map, strdup(mac_str), *tcm_sta);
+  } else {
+    (*tcm_sta)->num_frames++;
+    (*tcm_sta)->snr_gradient =
+        (smoothening_factor) * (snr - (*tcm_sta)->prev_snr) /
+            (current_time - (*tcm_sta)->prev_frame_received_time) +
+        (1 - smoothening_factor) * (*tcm_sta)->snr_gradient;
+    tcm_frame_data->EMA = (*tcm_sta)->snr_gradient;
+    (*tcm_sta)->prev_snr = snr;
+    (*tcm_sta)->prev_frame_received_time = current_time;
+    (*tcm_sta)->frame_data = *msg;
+  }
+  queue_push((*tcm_sta)->frame_info, tcm_frame_data);
+  wifi_util_dbg_print(WIFI_TCM, "(%d, %d, %u, %s, %llu, %lf, %d)\n",
+                      map_wifi_frame_to_wlan(msg->frame.type), snr,
+                      msg->frame.ap_index, mac_str, current_time,
+                      (*tcm_sta)->snr_gradient, (*tcm_sta)->num_frames);
+}
+
+void handle_cac_status(frame_data_t *msg, tcm_sta_info_t *tcm_sta,
+                       mac_addr_str_t mac_str, int cac_status,
+                       hash_map_t *tcm_req_map, int num_mgmt_frames,
+                       int time_ms) {
+  wifi_ctrl_t *ctrl = (wifi_ctrl_t *)get_wifictrl_obj();
+  switch (cac_status) {
+  case status_ok:
+    if (tcm_sta->num_frames < num_mgmt_frames) {
+      if (tcm_sta->allow_scheduler_id == 0) {
+        scheduler_add_timer_task(ctrl->sched, TRUE,
+                                 &tcm_sta->allow_scheduler_id, send_resp_frame,
+                                 tcm_sta, time_ms, 1, 0);
+      }
+    } else if (tcm_sta->allow_scheduler_id == 0) {
+      if (handle_deauth(tcm_sta, msg, mac_str, tcm_req_map) == TCM_FAILURE) {
+        tcm_print("%s:%d handle_deauth failed \n",
+                              __func__, __LINE__);
+      }
+    } else {
+      scheduler_cancel_timer_task(ctrl->sched, tcm_sta->allow_scheduler_id);
+      tcm_sta->allow_scheduler_id = 0;
+      if (handle_deauth(tcm_sta, msg, mac_str, tcm_req_map) == TCM_FAILURE) {
+        tcm_print("%s:%d handle_deauth failed \n",
+                              __func__, __LINE__);
+      }
+    }
+    break;
+  case status_deny:
+    if (send_resp_frame(tcm_sta) == TCM_FAILURE) {
+      tcm_print("%s:%d send_resp_frame failed\n",
+                            __func__, __LINE__);
+    }
+    break;
+  default:
+    wifi_util_dbg_print(WIFI_TCM,
+                         "%s:%d Neither status_ok nor status_deny is received "
+                         "for client %s. Invalid\n",
+                         __func__, __LINE__, mac_str);
+    break;
+  }
+  return;
 }
 
 void cac_mgmt_frame_event(wifi_app_t *app, frame_data_t *msg, int type)
@@ -538,6 +999,7 @@ void cac_mgmt_frame_event(wifi_app_t *app, frame_data_t *msg, int type)
     int radio_index;
     char *str;
     cac_sta_info_t *elem;
+    tcm_sta_info_t *tcm_sta;
     char vap_name[32];
     int ret;
     int snr, chan_util;
@@ -551,11 +1013,14 @@ void cac_mgmt_frame_event(wifi_app_t *app, frame_data_t *msg, int type)
     cac_status_t rssi_status, snr_status, chan_util_status, mbr_status;
     bool rssi_enabled, snr_enabled, chan_util_enabled, mbr_enabled;
     hash_map_t *req_map = app->data.u.cac.assoc_req_map;
+    hash_map_t *tcm_req_map = app->data.u.cac.tcm_req_map;
+    unsigned long long current_time;
     bool threshold_breached = false;
+    bool tcm_rfc = false;
 
     memset(vap_name, 0, sizeof(vap_name));
 
-    if (!is_vap_hotspot(&((wifi_mgr_t *)get_wifimgr_obj())->hal_cap.wifi_prop, msg->frame.ap_index)) {
+    if (!is_vap_hotspot(&((wifi_mgr_t *)get_wifimgr_obj())->hal_cap.wifi_prop, msg->frame.ap_index) || msg->frame.dir == wifi_direction_downlink) {
         wifi_util_dbg_print(WIFI_APPS, "%s:%d cac frame hook is used for hotspot vap, ap_index = :%d \n", __func__, __LINE__, msg->frame.ap_index);
         return;
     }
@@ -635,10 +1100,35 @@ void cac_mgmt_frame_event(wifi_app_t *app, frame_data_t *msg, int type)
         return;
     }
 
+    wifi_rfc_dml_parameters_t *rfc_param = get_wifi_db_rfc_parameters();
+
+    if (wifidb_get_rfc_config(0,rfc_param) != 0) {
+        wifi_util_dbg_print(WIFI_APPS,"%s:%d: Error getting RFC config\n",__func__, __LINE__);
+    }
+
+    tcm_rfc = rfc_param->tcm_enabled_rfc;
+
+    wifi_preassoc_control_t *l_preassoc_ctrl_cfg = Get_wifi_object_preassoc_ctrl_parameter(msg->frame.ap_index);
+
+    if(l_preassoc_ctrl_cfg == NULL) {
+        wifi_util_dbg_print(WIFI_DB,"%s:%d: invalid Get_wifi_object_preassoc_ctrl_parameter \n",__func__, __LINE__);
+        return;
+    }
+
+    wifi_util_dbg_print(WIFI_TCM,"%s:%d Value of time_ms = %d, min_mgmt_frames = %d, smoothening_factor = %s, tcm_gradient_threshold = %s\n",__func__,__LINE__,l_preassoc_ctrl_cfg->time_ms,l_preassoc_ctrl_cfg->min_num_mgmt_frames,l_preassoc_ctrl_cfg->tcm_exp_weightage,l_preassoc_ctrl_cfg->tcm_gradient_threshold);
+
+    if(!tcm_rfc && msg->frame.type == WIFI_MGMT_FRAME_TYPE_AUTH)
+    {
+        return;
+    }
+
     get_radio_data(radio_index, &chan_stats);
     snr = msg->frame.sig_dbm - chan_stats.radio_NoiseFloor;
     chan_util = chan_stats.radio_ChannelUtilization;
     sta_phy_rate = (float)msg->frame.phy_rate/10;
+
+    current_time = getCurrentTimeInMilliSeconds();
+    tcm_sta = (tcm_sta_info_t *)hash_map_get(tcm_req_map, mac_str);
 
     if ((elem = (cac_sta_info_t *)hash_map_get(req_map, mac_str)) == NULL) {
         threshold_breached = false;
@@ -657,6 +1147,14 @@ void cac_mgmt_frame_event(wifi_app_t *app, frame_data_t *msg, int type)
                 telemetry_event_cac("PREDENY", msg->frame.ap_index , "MBR", str, (int)min_mbr_rate, (int)sta_phy_rate);
             }
         }
+
+        if (tcm_rfc) {
+          update_tcm_sta_entry(
+              &tcm_sta, mac_str, current_time, snr, msg,
+              atof(l_preassoc_ctrl_cfg->tcm_exp_weightage), tcm_req_map,
+              atof(l_preassoc_ctrl_cfg->tcm_gradient_threshold));
+        }
+
         if (mbr_status == status_ok && msg->frame.type == WIFI_MGMT_FRAME_TYPE_PROBE_REQ) {
             wifi_hal_send_mgmt_frame_response(msg->frame.ap_index,
               type, CAC_STATUS_OK, WLAN_STATUS_SUCCESS,
@@ -710,11 +1208,25 @@ void cac_mgmt_frame_event(wifi_app_t *app, frame_data_t *msg, int type)
              chan_util_status == status_ok &&
              mbr_status == status_ok) {
             wifi_util_info_print(WIFI_APPS,"%s:%d: send status ok\n",__func__, __LINE__);
-            cac_print("%s:%d, ASSOC ACCEPT\n", __func__, __LINE__);
-            wifi_hal_send_mgmt_frame_response(msg->frame.ap_index,
-                            type, CAC_STATUS_OK, WLAN_STATUS_SUCCESS,
-                            msg->data, msg->frame.sta_mac,
-                            msg->frame.len, msg->frame.sig_dbm);
+            wifi_util_dbg_print(
+                WIFI_TCM, "%s:%d CAC Status ok for frame type %d & STA %s\n",
+                __func__, __LINE__, map_wifi_frame_to_wlan(msg->frame.type),
+                mac_str);
+            if (tcm_rfc) {
+              if (tcm_sta->num_frames >= MAX_NUM_FRAME_TO_WAIT &&
+                  msg->frame.type != WIFI_MGMT_FRAME_TYPE_AUTH) {
+                tcm_sta->latest_cac_status = status_ok;
+                handle_cac_status(msg, tcm_sta, mac_str, status_ok, tcm_req_map,
+                                  l_preassoc_ctrl_cfg->min_num_mgmt_frames,
+                                  l_preassoc_ctrl_cfg->time_ms);
+              }
+            } else {
+              cac_print("%s:%d, ASSOC ACCEPT\n", __func__, __LINE__);
+              wifi_hal_send_mgmt_frame_response(
+                  msg->frame.ap_index, type, CAC_STATUS_OK, WLAN_STATUS_SUCCESS,
+                  msg->data, msg->frame.sta_mac, msg->frame.len,
+                  msg->frame.sig_dbm);
+            }
             return;
         }
 
@@ -723,17 +1235,17 @@ void cac_mgmt_frame_event(wifi_app_t *app, frame_data_t *msg, int type)
              mbr_status == status_deny) {
             wifi_util_info_print(WIFI_APPS,"%s:%d: send status failure\n",__func__, __LINE__);
             wifi_hal_send_mgmt_frame_response(msg->frame.ap_index, 
-                            type, CAC_STATUS_DENY, 
-                            WLAN_STATUS_DENIED_POOR_CHANNEL_CONDITIONS, 
-                            msg->data, msg->frame.sta_mac, 
-                            msg->frame.len, msg->frame.sig_dbm);
+                        type, CAC_STATUS_DENY, 
+                        WLAN_STATUS_DENIED_POOR_CHANNEL_CONDITIONS, 
+                        msg->data, msg->frame.sta_mac, 
+                        msg->frame.len, msg->frame.sig_dbm);
             return;
         }
 
         if (chan_util_status == status_deny) {
             wifi_util_info_print(WIFI_APPS,"%s:%d: send status failure\n",__func__, __LINE__);
             wifi_hal_send_mgmt_frame_response(msg->frame.ap_index, 
-                            type, CAC_STATUS_DENY, 
+                            type, CAC_STATUS_DENY,
                             WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA, 
                             msg->data, msg->frame.sta_mac, 
                             msg->frame.len, msg->frame.sig_dbm);
@@ -755,6 +1267,13 @@ void cac_mgmt_frame_event(wifi_app_t *app, frame_data_t *msg, int type)
         elem->num_frames++;
         elem->rssi_avg = EXP_WEIGHT * elem->rssi_avg + (1 - EXP_WEIGHT) * msg->frame.sig_dbm;
         elem->snr_avg = EXP_WEIGHT * elem->snr_avg + (1 - EXP_WEIGHT) * snr;
+
+        if (tcm_rfc) {
+          update_tcm_sta_entry(
+              &tcm_sta, mac_str, current_time, snr, msg,
+              atof(l_preassoc_ctrl_cfg->tcm_exp_weightage), tcm_req_map,
+              atof(l_preassoc_ctrl_cfg->tcm_gradient_threshold));
+        }
 
         if (elem->num_frames == MAX_NUM_FRAME_TO_WAIT) {
             if (!(threshold_breached) && rssi_enabled) {
@@ -879,17 +1398,31 @@ void cac_mgmt_frame_event(wifi_app_t *app, frame_data_t *msg, int type)
              chan_util_status == status_ok &&
              mbr_status == status_ok) {
             wifi_util_info_print(WIFI_APPS,"%s:%d: send status ok\n",__func__, __LINE__);
-            cac_print("%s:%d, ASSOC ACCEPT %s\n", __func__, __LINE__, str);
-            wifi_hal_send_mgmt_frame_response(msg->frame.ap_index, 
-                            type, CAC_STATUS_OK, WLAN_STATUS_SUCCESS,
-                            msg->data, msg->frame.sta_mac, 
-                            msg->frame.len, msg->frame.sig_dbm);
-            elem = hash_map_remove(req_map, mac_str);
+            wifi_util_dbg_print(
+                WIFI_TCM, "%s:%d CAC Status ok for frame type %d & STA %s\n",
+                __func__, __LINE__, map_wifi_frame_to_wlan(msg->frame.type),
+                mac_str);
+            if (tcm_rfc) {
+              if (tcm_sta->num_frames >= MAX_NUM_FRAME_TO_WAIT &&
+                  msg->frame.type != WIFI_MGMT_FRAME_TYPE_AUTH) {
+                tcm_sta->latest_cac_status = status_ok;
+                handle_cac_status(msg, tcm_sta, mac_str, status_ok, tcm_req_map,
+                                  l_preassoc_ctrl_cfg->min_num_mgmt_frames,
+                                  l_preassoc_ctrl_cfg->time_ms);
+              }
+            } else {
+              cac_print("%s:%d, ASSOC ACCEPT %s\n", __func__, __LINE__, str);
+              wifi_hal_send_mgmt_frame_response(
+                  msg->frame.ap_index, type, CAC_STATUS_OK, WLAN_STATUS_SUCCESS,
+                  msg->data, msg->frame.sta_mac, msg->frame.len,
+                  msg->frame.sig_dbm);
+              elem = hash_map_remove(req_map, mac_str);
 
-            if (elem != NULL) {
+              if (elem != NULL) {
                 free(elem);
+              }
+              return;
             }
-            return;
         }
 
         if (rssi_status == status_deny ||
@@ -901,8 +1434,8 @@ void cac_mgmt_frame_event(wifi_app_t *app, frame_data_t *msg, int type)
                             WLAN_STATUS_DENIED_POOR_CHANNEL_CONDITIONS, 
                             msg->data, msg->frame.sta_mac,
                             msg->frame.len, msg->frame.sig_dbm);
-            elem = hash_map_remove(req_map, mac_str);
 
+            elem = hash_map_remove(req_map, mac_str);
             if (elem != NULL) {
                 free(elem);
             }
@@ -916,8 +1449,8 @@ void cac_mgmt_frame_event(wifi_app_t *app, frame_data_t *msg, int type)
                             WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA, 
                             msg->data, msg->frame.sta_mac,
                             msg->frame.len, msg->frame.sig_dbm);
-            elem = hash_map_remove(req_map, mac_str);
 
+            elem = hash_map_remove(req_map, mac_str);
             if (elem != NULL) {
                 free(elem);
             }
@@ -962,39 +1495,38 @@ int cac_event_webconfig_set_data(wifi_app_t *apps, webconfig_subdoc_data_t *doc,
     return RETURN_OK;
 }
 
-int webconfig_event_cac(wifi_app_t *apps, wifi_event_subtype_t sub_type,
-    webconfig_subdoc_data_t *doc)
+
+int webconfig_event_cac(wifi_app_t *apps, wifi_event_subtype_t sub_type, webconfig_subdoc_data_t *doc)
 {
     switch (sub_type) {
-    case wifi_event_webconfig_set_data:
-        break;
-    case wifi_event_webconfig_set_data_dml:
-        break;
-    case wifi_event_webconfig_set_data_webconfig:
-        break;
-    case wifi_event_webconfig_set_data_ovsm:
-        break;
-    case wifi_event_webconfig_data_resched_to_ctrl_queue:
-        break;
-    case wifi_event_webconfig_data_to_hal_apply:
-        break;
-    case wifi_event_webconfig_data_to_apply_pending_queue:
-        cac_event_webconfig_set_data(apps, doc, sub_type);
-        break;
-    case wifi_event_webconfig_set_status:
-        break;
-    case wifi_event_webconfig_hal_result:
-        break;
-    case wifi_event_webconfig_get_data:
-        break;
-    case wifi_event_webconfig_set_data_tunnel:
-        break;
-    case wifi_event_webconfig_data_req_from_dml:
-        break;
-    default:
-        wifi_util_dbg_print(WIFI_APPS, "%s:%d: event not handle %s\r\n", __func__, __LINE__,
-            wifi_event_subtype_to_string(sub_type));
-        break;
+        case wifi_event_webconfig_set_data:
+            break;
+        case wifi_event_webconfig_set_data_dml:
+            break;
+        case wifi_event_webconfig_set_data_webconfig:
+            break;
+        case wifi_event_webconfig_set_data_ovsm:
+            break;
+        case wifi_event_webconfig_data_resched_to_ctrl_queue:
+            break;
+        case wifi_event_webconfig_data_to_hal_apply:
+            break;
+        case wifi_event_webconfig_data_to_apply_pending_queue:
+            cac_event_webconfig_set_data(apps, doc, sub_type);
+            break;
+        case wifi_event_webconfig_set_status:
+            break;
+        case wifi_event_webconfig_hal_result:
+            break;
+        case wifi_event_webconfig_get_data:
+            break;
+        case wifi_event_webconfig_set_data_tunnel:
+            break;
+        case wifi_event_webconfig_data_req_from_dml:
+            break;
+        default:
+            wifi_util_error_print(WIFI_APPS,"%s:%d: event not handle[%d]\r\n",__func__, __LINE__, sub_type);
+            break;
     }
 
     return RETURN_OK;
@@ -1097,49 +1629,49 @@ int cac_event_hal_disassoc_device(wifi_app_t *apps, void *arg)
 
 int hal_event_cac(wifi_app_t *apps, wifi_event_subtype_t sub_type, void *arg)
 {
-    // wifi_util_info_print(WIFI_APPS,"%s:%d: event handled[%d]\r\n",__func__, __LINE__, sub_type);
+    //wifi_util_info_print(WIFI_APPS,"%s:%d: event handled[%d]\r\n",__func__, __LINE__, sub_type);
     switch (sub_type) {
-    case wifi_event_hal_unknown_frame:
-        break;
-    case wifi_event_hal_mgmt_frames:
-        break;
-    case wifi_event_hal_probe_req_frame:
-        cac_mgmt_frame_event(apps, (frame_data_t *)arg, WLAN_FC_STYPE_PROBE_REQ);
-        break;
-    case wifi_event_hal_auth_frame:
-        break;
-    case wifi_event_hal_assoc_req_frame:
-        cac_mgmt_frame_event(apps, (frame_data_t *)arg, WLAN_FC_STYPE_ASSOC_RESP);
-        break;
-    case wifi_event_hal_assoc_rsp_frame:
-        break;
-    case wifi_event_hal_reassoc_req_frame:
-        cac_mgmt_frame_event(apps, (frame_data_t *)arg, WLAN_FC_STYPE_REASSOC_RESP);
-        break;
-    case wifi_event_hal_reassoc_rsp_frame:
-        break;
-    case wifi_event_hal_sta_conn_status:
-        break;
-    case wifi_event_hal_assoc_device:
-        cac_event_hal_assoc_device(apps, arg);
-        break;
-    case wifi_event_hal_disassoc_device:
-        cac_event_hal_disassoc_device(apps, arg);
-        break;
-    case wifi_event_scan_results:
-        break;
-    case wifi_event_hal_channel_change:
-        break;
-    case wifi_event_radius_greylist:
-        break;
-    case wifi_event_hal_potential_misconfiguration:
-        break;
-    case wifi_event_hal_analytics:
-        break;
-    default:
-        wifi_util_dbg_print(WIFI_APPS, "%s:%d: event not handle %s\r\n", __func__, __LINE__,
-            wifi_event_subtype_to_string(sub_type));
-        break;
+        case wifi_event_hal_unknown_frame:
+            break;
+        case wifi_event_hal_mgmt_frames:
+            break;
+        case wifi_event_hal_probe_req_frame:
+            cac_mgmt_frame_event(apps, (frame_data_t *)arg, WLAN_FC_STYPE_PROBE_REQ);
+            break;
+        case wifi_event_hal_auth_frame:
+            cac_mgmt_frame_event(apps, (frame_data_t *)arg, WLAN_FC_STYPE_AUTH);
+            break;
+        case wifi_event_hal_assoc_req_frame:
+            cac_mgmt_frame_event(apps, (frame_data_t *)arg, WLAN_FC_STYPE_ASSOC_RESP);
+            break;
+        case wifi_event_hal_assoc_rsp_frame:
+            break;
+        case wifi_event_hal_reassoc_req_frame:
+            cac_mgmt_frame_event(apps, (frame_data_t *)arg, WLAN_FC_STYPE_REASSOC_RESP);
+            break;
+        case wifi_event_hal_reassoc_rsp_frame:
+            break;
+        case wifi_event_hal_sta_conn_status:
+            break;
+        case wifi_event_hal_assoc_device:
+            cac_event_hal_assoc_device(apps, arg);
+            break;
+        case wifi_event_hal_disassoc_device:
+            cac_event_hal_disassoc_device(apps, arg);
+            break;
+        case wifi_event_scan_results:
+            break;
+        case wifi_event_hal_channel_change:
+            break;
+        case wifi_event_radius_greylist:
+            break;
+        case wifi_event_hal_potential_misconfiguration:
+            break;
+        case wifi_event_hal_analytics:
+            break;
+        default:
+            wifi_util_error_print(WIFI_APPS,"%s:%d: event not handle[%d]\r\n",__func__, __LINE__, sub_type);
+            break;
     }
 
     return RETURN_OK;
@@ -1222,7 +1754,7 @@ int cac_init(wifi_app_t *app, unsigned int create_flag)
 
     app->data.u.cac.assoc_req_map = hash_map_create();
     app->data.u.cac.sta_map = hash_map_create();
-
+    app->data.u.cac.tcm_req_map = hash_map_create();
     return 0;
 }
 
@@ -1230,6 +1762,7 @@ int cac_deinit(wifi_app_t *app)
 {
     hash_map_destroy(app->data.u.cac.assoc_req_map);
     hash_map_destroy(app->data.u.cac.sta_map);
+    hash_map_destroy(app->data.u.cac.tcm_req_map);
     return RETURN_OK;
 }
 #endif

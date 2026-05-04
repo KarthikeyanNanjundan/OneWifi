@@ -32,6 +32,7 @@
 #include "wifi_passpoint.h"
 #include "wifi_stubs.h"
 #include "run_qmgr.h"
+#include "wifi_ipc_server.h"
 #define NEIGHBOR_SCAN_RESULT_INTERVAL 40000 // 40 sec
 #define MAX_VAP_INDEX 24
 
@@ -4563,6 +4564,10 @@ void handle_wifiapi_event(void *data, unsigned int len, wifi_event_subtype_t sub
     switch (subtype) {
     case wifi_event_type_wifiapi_execution:
         process_wifiapi_command((char *)data, len);
+        break;
+
+    case wifi_event_type_wifiapi_ipc_call:
+        wifi_ipc_server_handle_req(data, len);
         break;
 
     default:

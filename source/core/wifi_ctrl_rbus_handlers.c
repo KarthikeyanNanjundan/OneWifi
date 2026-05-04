@@ -27,6 +27,7 @@
 #include "wifi_monitor.h"
 #include "wifi_webconfig.h"
 #include "run_qmgr.h"
+#include "wifi_ipc_server.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -4040,6 +4041,9 @@ void bus_register_handlers(wifi_ctrl_t *ctrl)
                                     { bus_data_type_bytes, true, 0, 0, 0, NULL } },
                                 { WIFI_BUS_WIFIAPI_COMMAND, bus_element_type_method,
                                     { NULL, set_wifiapi_command, NULL, NULL, NULL, NULL }, slow_speed, ZERO_TABLE,
+                                    { bus_data_type_string, true, 0, 0, 0, NULL } },
+                                { WIFI_BUS_WIFIAPI_CALL, bus_element_type_method,
+                                    { NULL, NULL, NULL, NULL, NULL, wifiapi_call_method }, slow_speed, ZERO_TABLE,
                                     { bus_data_type_string, true, 0, 0, 0, NULL } },
                                 { WIFI_BUS_WIFIAPI_RESULT, bus_element_type_event,
                                     { NULL, NULL, NULL, NULL, wifiapi_event_handler, NULL}, slow_speed, ZERO_TABLE,

@@ -326,7 +326,7 @@ void wifiapi_printbssinfo(char *buff, unsigned int buff_size, wifi_bss_info_t *b
     }
 }
 
-static void wifiapi_handle_start_neighbor_scan(char **args, unsigned int num_args, char *result_buf,
+void wifiapi_handle_start_neighbor_scan(char **args, unsigned int num_args, char *result_buf,
     unsigned int result_buf_size)
 {
     INT vap_index, scan_mode, dwell_time;

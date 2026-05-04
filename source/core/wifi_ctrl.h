@@ -57,6 +57,7 @@ extern "C" {
 
 #define WIFI_BUS_WIFIAPI_COMMAND           "Device.WiFi.WiFiAPI.command"
 #define WIFI_BUS_WIFIAPI_RESULT            "Device.WiFi.WiFiAPI.result"
+#define WIFI_BUS_WIFIAPI_CALL              "Device.WiFi.WiFiAPI.call"
 
 #define WIFI_NORMALIZED_RSSI_LIST          "Device.DeviceInfo.X_RDKCENTRAL-COM_WIFI_TELEMETRY.NormalizedRssiList"
 #define WIFI_SNR_LIST                      "Device.DeviceInfo.X_RDKCENTRAL-COM_WIFI_TELEMETRY.SNRList"
@@ -407,6 +408,8 @@ char *get_assoc_devices_blob();
 void get_subdoc_name_from_vap_index(uint8_t vap_index, int* subdoc);
 void get_subdoc_type_name_from_ap_index(uint8_t vap_index, int* subdoc);
 
+void wifiapi_handle_start_neighbor_scan(char **args, unsigned int num_args, char *result_buf,
+    unsigned int result_buf_size);
 int dfs_nop_start_timer(void *args);
 int webconfig_send_full_associate_status(wifi_ctrl_t *ctrl);
 void start_station_vaps(bool enable);

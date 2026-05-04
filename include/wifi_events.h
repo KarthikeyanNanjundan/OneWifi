@@ -226,6 +226,11 @@ typedef enum {
     // wif_api
     wifi_event_type_wifiapi_execution = wifi_event_type_base
         << (wifi_event_type_wifiapi + 22), // wifi_event_type_base << 28
+
+    /* Synchronous external IPC call — data is sizeof(req*) bytes.
+     * Handled by wifi_ipc_server_handle_req(). */
+    wifi_event_type_wifiapi_ipc_call,       // wifi_event_type_base << 29
+
     wifi_event_type_wifiapi_max = wifi_event_type_base << 31
 } wifi_event_subtype_t;
 

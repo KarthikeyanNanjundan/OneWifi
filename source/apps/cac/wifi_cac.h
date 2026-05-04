@@ -31,6 +31,7 @@ extern "C" {
 #define CAC_STATUS_OK 0
 #define CAC_STATUS_DENY 1
 
+#define TCM_FAILURE -1
 #define NL_OK 0
 #define NL_SKIP 1
 #define WLAN_STATUS_SUCCESS 0
@@ -68,6 +69,26 @@ typedef struct {
 
 typedef struct {
     unsigned int    ap_index;
+    mac_addr_str_t  mac_addr;
+    int             num_frames;
+    double          snr_gradient;
+    double          grad_threshold;
+    unsigned long long   prev_frame_received_time;
+    int             prev_snr;
+    frame_data_t    frame_data;
+    queue_t         *frame_info;
+    int             allow_scheduler_id;
+    int             latest_cac_status;
+    int             seconds_alive;
+}tcm_sta_info_t;
+
+typedef struct{
+    unsigned long long  frame_received_time;
+    double          EMA;
+}tcm_frame_data_t;
+
+typedef struct {
+    unsigned int    ap_index;
     mac_address_t   sta_mac;
     int             rssi_avg;
     int             snr_avg;
@@ -79,7 +100,8 @@ typedef struct {
 typedef struct {
     hash_map_t      *assoc_req_map;
     hash_map_t      *sta_map;
-} cac_data_t;
+    hash_map_t      *tcm_req_map;
+}cac_data_t;
 
 #ifdef __cplusplus
 }
